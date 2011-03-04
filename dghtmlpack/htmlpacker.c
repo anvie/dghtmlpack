@@ -1,4 +1,6 @@
-
+/**
+ * Copyright (C) 2011 Robin Syihab.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
