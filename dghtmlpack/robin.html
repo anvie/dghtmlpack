@@ -1,0 +1,3002 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+
+
+
+    
+
+  
+
+ 
+<link rel="stylesheet" type="text/css" href="robin_files/digaku.css" media="screen">
+<script src="robin_files/ga.js" async="" type="text/javascript"></script><script type="text/javascript" src="robin_files/digaku.js"></script>
+ 
+ <title>
+            Digaku.com | robin's Home
+
+ </title>
+ 
+
+
+<script type="text/javascript">
+$(document).ready(function(){
+    
+    $("#user_name").focus(function(){
+        if ($(this).val() == "User name / email"){
+            $(this).removeClass("text-desc-mask").val("");
+        }
+    }).blur(function(){
+        if ($(this).val().length == 0){
+            $(this).addClass("text-desc-mask").val("User name / email");
+        }
+    });
+    if($("#user_name").val() == "User name / email"){
+        $("#user_name").addClass("text-desc-mask");
+    }
+    $("#password").focus(function(){
+        if($(this).val() == "Password"){
+            $(this).removeClass("text-desc-mask").val("");
+        }
+    }).blur(function(){
+        if($(this).val().length == 0){
+            $(this).addClass("text-desc-mask").val("Password");
+        }
+    });
+    if($("#password").val() == "Password"){
+        $("#password").addClass("text-desc-mask");
+    }
+    
+    $('#ntf-ctl').click(function(){
+        $(this).addClass("active");
+        var pos = $(this).offset();
+        pos.left -= $('#ntf-box').width() - $(this).width();
+        pos.top += $(this).height();
+        $('#ntf-box').show().css(pos);
+        /*mark all as readed*/
+        $.post('/userprofile/mark-notification-as-readed',{'all':'1'});
+    });
+    $(document).click(function(e){
+        if($(e.target).is("#ntf-ctl, #ntf-box *")) return;
+        $('#ntf-ctl').removeClass("active").next().hide();
+    });
+    
+    $('#chm-ctl').click(function(){
+        $(this).addClass("active");
+        var pos = $(this).offset();
+        pos.left -= $('#chm-box').width() - $(this).width();
+        pos.top += $(this).height();
+        $('#chm-box').show().css(pos);
+    });
+    $(document).click(function(e){
+        if($(e.target).is("#chm-ctl, #chm-box *")) return;
+        $('#chm-ctl').removeClass("active").next().hide();
+    });
+    
+    $(document).click(function(e){
+        if($(e.target).is(".ptbox-ctl, .ptbox-box *")) return;
+        $('.ptbox-ctl').removeClass("active");
+        $('.ptbox-box').hide();
+    });
+    
+    
+    
+    $("#user-ch-search").textMask("Find channel");
+    
+    /*@todo optimize this auto notification refresher, biar gak pake heart beat*/
+    
+    old_notification_count = 0;
+    orig_title = $.trim($("title").text());
+    
+    refreshNotification = function(){
+        
+        $.ajax({
+            url:"/sys/notification/count?.rand=" + Math.random(),
+            type: "POST",
+            success: function(d){
+                if(d && d.error[0] == 0){
+                    if (d.count > old_notification_count){
+                        $("#ntf-ctl").text(sprintf('Notification (%d)', d.count)).next().html(d.result);
+                        $.flashTitle(orig_title, "New notification!");
+                        Digaku.utils.playSound("/media/dingdong.wav");
+                    }else if(d.count == 0){
+                        var o = $("#ntf-ctl");
+                        if (o.text() != 'Notification'){
+                            o.text('Notification');
+                        }
+                    }
+                    old_notification_count = d.count;
+                }
+            },
+            complete: function(x,st){
+                setTimeout(refreshNotification, 5000);
+            }
+        });
+        
+        
+    };
+    
+    setTimeout(refreshNotification, 5000);
+    
+    
+});
+</script>
+
+
+
+
+<!-- autocomplete stuff begin -->
+
+<script>
+; (function($) {
+    $.fn.setCaretPosition = function(pos) {
+        if ($(this).get(0).setSelectionRange) {
+            $(this).get(0).setSelectionRange(pos, pos);
+        } else if ($(this).get(0).createTextRange) {
+            var range = $(this).get(0).createTextRange();
+            range.collapse(true);
+            range.moveEnd('character', pos);
+            range.moveStart('character', pos);
+            range.select();
+        }
+    }
+})(jQuery);
+
+nameSuggesterEventHandler = function (evt) {
+    var _self = $(this);
+    var ms_box = $('#mention_suggestion_box');
+    var range = _self.getSelection();
+    var fval = _self.val().substr(0, range.end);
+    var ffv = '';
+    var valid = false;
+    var tagstart = fval.lastIndexOf('@');
+    var tagend = 0;
+    var emphasis = function(value, term) {
+        return value.replace(new RegExp("(?![^&;]+;)(?!<[^<>]*)(" + term.replace(/([\^\$\(\)\[\]\{\}\*\.\+\?\|\\])/gi, "\\$1") + ")(?![^<>]*>)(?![^&;]+;)", "gi"), "<strong>$1</strong>");
+    }
+    if (tagstart >= 0) {
+        ffv = fval.substr(tagstart);
+        //#TODO: whitespace characters and hash and 'at' (not just space)
+        if (ffv.indexOf(' ') == -1) {
+            ffv = _self.val().substr(tagstart + 1);
+            tagend = ffv.indexOf(' ');
+            if (tagend >= 0) {
+                ffv = ffv.substr(0, tagend);
+            }
+            if (ffv && ms_box.attr('last_suggestion') != ffv) {
+                ms_box.attr('last_suggestion', ffv);
+                // Do query and update the suggestions
+                ms_box.html($.ajax({
+                    url: '/autocomplete/user-names?format=json&q=' + ffv,
+                    success: function(data) {
+                        var outstr = '';
+                        var ii;
+                        var tval = '';
+                        for (ii = 0; ii < data.data.length; ii++) {
+                            tval = emphasis(data.data[ii].name, ffv);
+                            outstr += '<li class="ac_entry ' + (ii % 2 ? 'ac_odd': 'ac_even') + '" title="' + data.data[ii].name + '">' + tval + '</li>';
+                        }
+                        ms_box.html('<ul>' + outstr + '</ul>');
+                        $('.ac_entry').unbind('click');
+                        $('.ac_entry').click(function() {
+                            var fr = _self.val().substr(0, tagstart + 1);
+                            var bk = tagend < 0 ? ' ': _self.val().substr(tagend + tagstart + 1);
+                            _self.val(fr + $(this).attr('title') + bk);
+                            ms_box.hide();
+                            _self.focus();
+                            _self.setCaretPosition(tagstart + $(this).attr('title').length + 2);
+                        });
+                    },
+                    dataType: 'json'
+                }));
+            }
+            if (ffv) {
+                valid = true;
+            }
+        }
+    }
+    if (valid) {
+        if (ms_box.css('display') == 'none') {
+            //ms_box.find('.ac_entry').removeClass('ac_over');
+            ms_box.show();
+            ms_box.css({
+                position: "absolute",
+                top: _self.offset().top + _self.height() + 11,
+                left: _self.offset().left
+            });
+        }
+        if (evt && evt.type == 'keydown') {
+            if (evt.keyCode == 38) {
+                evt.preventDefault();
+                var cso = ms_box.find('li.ac_over');
+                if (!cso || !cso.length) {
+                    ms_box.find('li:first').addClass('ac_over');
+                } else if (cso.prev('.ac_entry').length) {
+                    cso.removeClass('ac_over');
+                    cso.prev('.ac_entry').addClass('ac_over');
+                }
+            } else if (evt.keyCode == 40) {
+                evt.preventDefault();
+                var cso = ms_box.find('li.ac_over');
+                if (!cso || !cso.length) {
+                    ms_box.find('li:first').addClass('ac_over');
+                } else if (cso.next('.ac_entry').length) {
+                    cso.removeClass('ac_over');
+                    cso.next('.ac_entry').addClass('ac_over');
+                }
+            } else if (evt.keyCode == 13) {
+                evt.preventDefault();
+            }
+        }
+        if (evt && evt.type == 'keyup') {
+            if (evt.keyCode == 13) {
+                var cso = ms_box.find('li.ac_over');
+                if (cso && cso.length) {
+                    ms_box.find('.ac_entry').removeClass('ac_over');
+                    var fr = _self.val().substr(0, tagstart + 1);
+                    var bk = tagend < 0 ? ' ': _self.val().substr(tagend + tagstart + 1);
+                    _self.val(fr + cso.attr('title') + bk);
+                    ms_box.hide();
+                    _self.focus();
+                    _self.setCaretPosition(tagstart + cso.attr('title').length + 2);
+                }
+            }
+        }
+    } else {
+        if (ms_box.css('display') != 'none') {
+            //ms_box.find('.ac_entry').removeClass('ac_over');
+            ms_box.hide();
+        }
+    }
+}
+
+nameSuggesterEventBind = function() {
+    var ms_input = $('textarea.mention_input');
+    ms_input.unbind('keydown', nameSuggesterEventHandler);
+    ms_input.unbind('keyup', nameSuggesterEventHandler);
+    ms_input.unbind('mousedown', nameSuggesterEventHandler);
+    ms_input.unbind('mouseup', nameSuggesterEventHandler);
+    ms_input.unbind('mousemove', nameSuggesterEventHandler);
+    ms_input.bind('keydown keyup mousedown mouseup mousemove', nameSuggesterEventHandler)
+    //ms_input.blur(function() { $('#mention_suggestion_box').hide(); });
+}
+
+$(document).ready(function() {
+    $("body").append($('<div id="mention_suggestion_box" class="ac_results" style="display:none"></div>'));
+    nameSuggesterEventBind();
+});
+</script>
+<!-- autocomplete stuff end -->
+
+
+<script type="text/javascript">
+$(document).ready(function(){
+
+
+    rebindAll = function(){
+        $(".control-btn").hover(function(){
+            $(this).removeClass("ui-state-disabled").addClass("ui-state-hover");
+        },function(){
+            $(this).removeClass("ui-state-hover").addClass("ui-state-disabled");
+        }).each(function(){
+            $(this).attr("title", $(this).html());
+        });
+    };
+
+
+    pageLoad = function(hash){
+        var $obj = $("#profile-right-container");
+        if($obj.length == 0){
+            showMainContent();
+            $obj = $("#profile-right-container");
+        }
+        if(hash && hash != '/'){
+            
+            if(hash.startsWith("/ch/")){
+                var ch_id = hash.split("/")[2];
+                var params = {
+                    'quick':'1',
+                    'filter_by':'from-channel',
+                    'ch_id':ch_id,
+                    'orig_id':"4c5f984ab392ef0943000000",
+                    'orig_type':'userpage'
+                };
+                $obj = $("#user-post-streams");
+                load_post_streams = function(){
+                    $obj.html(Digaku.utils.loadingAnimation('Loading...'));
+                    Digaku.ajax.json_post("/user/robin/user-post-streams",params,function(d){
+                        if (d.error[0] == 0){
+                            $obj.html(d.result);
+                            refreshStream();
+                        }
+                    });
+                };
+                if($(".user-center-panel").length == 0){
+                    $.get("/user/robin/front",function(d){
+                        $("#profile-right-container").html(d);
+                        rebindAll();
+                        $obj = $("#user-post-streams");
+                        load_post_streams();
+                    });
+                }
+                else{
+                    load_post_streams();
+                }
+            }
+            else{
+                $obj.html(Digaku.utils.loadingAnimation('Loading...'));
+                $obj.load($.url.attr("path") + hash);
+            }
+
+        }
+        else{
+            $obj.html(Digaku.utils.loadingAnimation('Loading...'));
+            $obj.load("/user/robin/front");
+        }
+        $("a.ajax").address();
+    };
+
+    $("#set-photo").css({"cursor":"pointer"}).click(function(){
+        $("#set-photo-dialog").dialog({title:"Set your picture"});
+    });
+
+
+	$(window).scroll(function(){
+		/*var hl = ($(document).height() - $('body').height());*/
+		var scrl = $(window).scrollTop();
+		/*console.log(sprintf("Height: %d, Top-height: %d",hl,scrl));*/
+		if (scrl > 103){
+			$("#profile-left-container").css({'position':"fixed",'top':'5px'});
+		}else if(scrl < 103){
+            $("#profile-left-container").css({'position':"static"});
+        }
+	});
+
+    showMainContent = function(){
+
+        $.get("/user/robin/front",function(d){
+            $("#profile-right-container").html(d);
+            rebindAll();
+        });
+
+    };
+    
+    $("a.ajax").click(function(e){
+        $("#profile-left-container").css({'position':"static"});
+        $("#profile-right-container").css({'margin-left':''});
+        $("div.message-container").HideAllBubblePopups();
+
+    });
+
+    $.address.init(function(event){
+
+        $("a.ajax").address();
+
+    }).change(function(event){
+
+        /*console.log(event)*/
+
+        pageLoad(event.value);
+
+    }).history(true);
+
+
+});
+</script>
+
+ 
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-9507515-6']);
+  _gaq.push(['_setDomainName', '.digaku.com']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+function post_toolbox_click_handler(pid) {
+    $(".ptbox-box").hide();
+    $(".ptbox-ctl").removeClass('active');
+    var ptbox_ctl = $('#ptbox-'+ pid +'-ctl');
+    var ptbox_box = $('#ptbox-'+ pid +'-box');
+    ptbox_ctl.addClass("active");
+    ptbox_box.show().css({left:ptbox_ctl.parent().width() - ptbox_box.width()});
+}
+
+</script>
+
+
+<style type="text/css">
+.userpage-body{
+    padding-top: 20px;
+    text-align: left;
+    min-width: 1000px;
+}
+body{
+    
+}
+</style>
+
+</head><body>
+
+    
+    <div id="main-front-header">
+            <center>
+                <div id="dg-main-header">
+                    <div style="float: left; position: absolute; margin-top: 5px;">
+                        <img src="robin_files/digaku-logo-small.png">
+                    </div>
+                    <div class="left" style="margin-left: 50px;">
+                    <a href="http://127.0.0.1:2194/">
+                        <h1>Digaku |</h1>
+                    </a>
+                    </div>
+                    <div class="left page-desc">
+                        <h2 style="margin-top: 5px ! important;">
+                                robin's Home
+                        </h2>
+                                    <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status"><h3>aoeuaoeuaoeuaoeu</h3></a>
+                    </div>
+                    <div class="clear-both"></div>
+                </div>
+            </center>
+
+
+		<div id="main-quick-panel">
+			<div class="right text-right" style="min-width: 450px;">
+                
+                <span>Welcome <strong><a href="http://127.0.0.1:2194/user/robin">robin</a></strong>&nbsp; |</span>
+                
+                    <a id="ntf-ctl" href="javascript:void(0);" class="ui-corner-top">Notification</a>
+                    <div id="ntf-box" style="display: none;">
+                        
+    <ul>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/Yully">Yully</a> write <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status">something</a> in your home 1 day ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/Yully">Yully</a> mengomentari <a href="http://127.0.0.1:2194/user/Danny/show-post?id=4d009620b392ef23bb00002f&amp;pt=status">mind</a>her 1 day ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/Danny">Danny</a> mengomentari <a href="http://127.0.0.1:2194/user/Danny/show-post?id=4d009620b392ef23bb00002f&amp;pt=status">mind</a>his <a href="http://127.0.0.1:2194/user/Yully">Yully</a> 1 day ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/Danny">Danny</a> mengomentari <a href="http://127.0.0.1:2194/user/Danny/show-post?id=4d009620b392ef23bb00002f&amp;pt=status">mind</a>his <a href="http://127.0.0.1:2194/user/Danny">Danny</a> 1 day ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/Danny">Danny</a> mengomentari <a href="http://127.0.0.1:2194/user/Danny/show-post?id=4d009620b392ef23bb00002f&amp;pt=status">mind</a>his 1 day ago</li>
+        <li class="readed line">Anda ditandai pada <a href="http://127.0.0.1:2194/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status">sebuah post</a> oleh <a href="http://127.0.0.1:2194/user/sheriefmursjidi">sheriefmursjidi</a> 3  days ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/exavolt">exavolt</a> is now following you 3  days ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/fako">fako</a> mengomentari <a href="http://127.0.0.1:2194/ch/Wikileaks/show-post?id=4d005a23b392ef23ba000014&amp;pt=status">mind</a>his 3  days ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/ansaver">ansaver</a> mengomentari <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d0139f5b392ef6bb9000000&amp;pt=status">mind</a> Anda 3  days ago</li>
+        <li class="readed line"><a href="http://127.0.0.1:2194/user/fako">fako</a> mengomentari <a href="http://127.0.0.1:2194/ch/black.hole/show-post?id=4d013af6b392ef6bb6000000&amp;pt=status">mind</a> Anda 3  days ago</li>
+        <li class="text-center"><strong><a href="http://127.0.0.1:2194/user/robin#/show-notifications">Show all notifications</a></strong></li>
+    </ul>
+
+
+                    </div>
+                |
+                
+                <strong><a href="http://127.0.0.1:2194/user/robin">Profile</a></strong>
+                &nbsp;|&nbsp;
+                <a href="http://127.0.0.1:2194/logout/">Sign out</a>
+                <div class="clear-both"></div>
+			</div>
+			<div class="clear-both"></div>
+		</div>
+        
+
+        <div class="clear-both"></div>
+    </div>
+    
+    
+    <div class="channel-bar">
+        <ul class="horizontal-menu">
+            <li>Favorite channel</li>
+            
+            
+            <li>
+                <a href="http://127.0.0.1:2194/ch/brainstorming">#brainstorming</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/developer">#developer</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/photography">#photography</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/semutapi">#semutapi</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/golang-indonesia">#golang-indonesia</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/music">#music</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/Digaku-Dev">#Digaku-Dev</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/hq">#hq</a>
+            </li>
+            <li>
+                <a href="http://127.0.0.1:2194/ch/Web-Design">#Web-Design</a>
+            </li>
+            
+            <li>
+                <a id="chm-ctl" href="javascript:void(0);" class="ui-corner-top">(17 more)</a>
+                <div id="chm-box" style="display: none;">
+                    <ul>
+                        <li><a href="http://127.0.0.1:2194/ch/Fun-and-Joke">#Fun-and-Joke</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/unik">#unik</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/hacking">#hacking</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/ansav">#ansav</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/news">#news</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/wonosobo">#wonosobo</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/cinta">#cinta</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/kata-kata-bijak">#kata-kata-bijak</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/security">#security</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/love">#love</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/dailysocial">#dailysocial</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/scala-lang">#scala-lang</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/python-lang">#python-lang</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/metasploit">#metasploit</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/mac">#mac</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/apple">#apple</a></li>
+                        <li><a href="http://127.0.0.1:2194/ch/photojournalism">#photojournalism</a></li>
+                        <li class="text-center"><a href="http://127.0.0.1:2194/user/robin#/show-channels">All channel</a></li>
+                    </ul>
+                </div>
+            </li>
+            <li>
+                <form action="/sys/useraction/search-channel" method="GET" style="display: inline;">
+                <input value="Find channel" class="text-desc-mask" id="user-ch-search" name="q" style="width: 110px ! important; padding: 1px;" type="text">
+                </form>
+            </li>
+        </ul>
+    </div>
+    
+
+
+    
+
+<div id="set-photo-dialog" style="display: none;">
+    <form class="dg-form" action="/userprofile/set-photo" method="POST" enctype="multipart/form-data">
+        <p><label for="photo">Upload your picture :</label></p>
+        <p><input name="photo" type="file"></p>
+
+        <p class="text-right">
+            <br>
+            <input value="Upload" type="submit">
+        </p>
+    </form>
+</div>
+
+<div id="main-content">
+
+    <center>
+    <div class="userpage-body">
+        <div class="left" style="min-width: 250px; min-height: 100px;">
+        <div id="profile-left-container" class="left user-left-panel">
+            
+            <div class="avatar-large-outter ui-corner-all">
+            <div id="avatar-box" class="right ui-corner-all">
+                <center>
+                        <img style="cursor: pointer;" id="set-photo" title="Click to set your picture" src="robin_files/593243657954c35fcd9484f08af7079b.png">
+                </center>
+            </div>
+            <div class="clear-both"></div>
+            
+            
+                
+            <div>
+                <ul class="no-style">
+                    <li><a address="true" class="ajax" href="#/edit-profile">Settings</a></li>
+                    <li><a address="true" class="ajax" href="http://127.0.0.1:2194/tunnel/show-list">Tunnels</a></li>
+                    <!-- <li><a class="dg-ajax-box" href="/tunnel/create-tunnel-dialog" title="Create tunnel">Create tunnel</a></li> -->
+                    <li><a class="dg-ajax-box" href="http://127.0.0.1:2194/ui/channel/create" title="Create channel">Create channel</a></li>
+                    <li><a href="http://127.0.0.1:2194/application/app-list" title="Go to application manager">Application Manager</a></li>
+                </ul>
+            </div>
+            
+            
+            
+            
+            </div>
+            
+        </div>
+        </div>
+
+        <div id="profile-right-container" class="left">
+
+
+
+<div>
+        <div class="left user-center-panel ui-corner-all">
+            
+            
+			
+
+
+
+<div id="post-creator-box" class="dg-form-cool blue ui-corner-all" style="">
+    <div class="container ui-corner-all" style="padding: 0px ! important;">
+        <table class="fit valign-top">
+            <tbody><tr>
+                
+                <td></td>
+                
+                <td>
+
+    <form id="post-writer" class="dg-form" action="/userpost/create" method="POST">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <p><label for="message"><strong>What is in your mind?</strong></label></p>
+        
+            <p id="post-creator-title" class="hidden post-ctl">Title: <span class="clear-both"></span><input name="post-title" class="lockable" tabindex="-1" type="text"></p><div class="clear-both"></div>
+
+            <p class="post-ctl hidden">Content:</p>
+                <textarea rows="3" id="post-creator-textarea" name="message" class="lockable mention_input" tabindex="1"> </textarea><div class="small-note right charcounter"><b>159</b> chars left</div>
+            
+            <div class="post-ctl hidden">Tag keyword:  <span class="small-note">(separated with comma)</span><span class="clear-both">
+                <br>
+                <input name="keyword-tags" style="width: 45% ! important;" class="lockable" tabindex="-1" type="text">
+            </span></div>
+            
+            <div id="message-attacher-ctl-container" class="left" style="margin-top: 10px;">
+            <a id="message-attacher-ctl" href="javascript:void(0);" onclick="showMessageAttacher();" title="Add attachment" tabindex="-1">
+                <span class="digaku-icon-32 icon-attachment"></span>
+            </a>
+            </div>
+            
+            <div class="clear-both"></div>
+            
+            
+            <div class="message-attachment hidden clear-both">
+                
+                <div id="attachment-waiting" class="attachment-item hidden">
+                    <center>
+                        <div class="loading-box"><img src="robin_files/loading_animation.gif"><div>
+                    </div></div></center>
+                </div>
+                
+                <div id="attachment-media" class="attachment-item">
+                    
+                    <div id="attachment-tab" class="dg-tab-icononly left" style="width: 90%;">
+                
+         <ul class="tabs-icononly">  
+             <li><a href="javascript:void(0);" id="att-tab1" class="tab-ctl active" tabindex="-1">&nbsp;<span class="digaku-icon-32 icon-picture"></span></a></li>  
+             <li><a href="javascript:void(0);" id="att-tab2" class="tab-ctl" tabindex="-1">&nbsp;<span class="digaku-icon-32 icon-video"></span></a></li>  
+             <li><a href="javascript:void(0);" id="att-tab3" class="tab-ctl" tabindex="-1">&nbsp;<span class="digaku-icon-32 icon-attachfile"></span></a></li>  
+         </ul>  
+   
+         <div class="content tab-1">
+            
+            
+
+
+
+<div class="picurl-container">
+	<span>From url :</span>
+	<input name="picture_url" style="width: 300px ! important;" type="text">
+	<span class="addurl-button uiButton hand-pointer" onclick="addPictureUrl(this);">Add</span>
+</div>
+
+<div class="picurl-done hidden">
+	<span style="font-size: 10px;"><strong></strong></span>
+	<span class="rmurl-button link" onclick="removePictureUrl(this);">Delete</span>
+</div>
+<br>
+or
+<br>
+<p style="margin-bottom: 10px;">Upload :</p>
+<div>
+	<div class="picfiles-container"></div>
+	<iframe id="upload-progress" src="" class="hidden" width="350" frameborder="0" height="45"></iframe>
+</div>
+<span class="img-upload-button uiButton hand-pointer">Choose file</span>
+
+<br>
+         
+         </div>  
+         <div class="content tab-2 hidden">
+            
+            
+
+
+<div class="attachment-video-container" style="display: none;">
+	<span></span>
+	<span class="addurl-button uiButton hand-pointer" onclick="cancelAttachmentVideo(this);">Cancel</span>
+</div>
+
+<div class="insert-attachment-video-container">
+	<span>URL:</span>
+	<input name="attachment_video" style="width: 300px ! important;" type="text">
+	<span class="addurl-button uiButton hand-pointer insert-attachment-video-ctl" onclick="insertAttachmentVideo(this);">Attach</span>
+</div>
+
+
+            
+         </div>  
+         <div class="content tab-3 hidden">
+            
+            
+
+
+<p style="margin-bottom: 10px;">Upload :</p>
+<div style="margin-bottom: 20px;">
+	<div class="attachment-files-container"></div>
+	<iframe id="attachment-files-upload-progress" src="" class="hidden" width="350" frameborder="0" height="45"></iframe>
+</div>
+<span class="file-upload-button uiButton hand-pointer">Choose file</span>
+<div style="margin-top: 20px;">
+	<p>Accepted file format : *.txt,*.zip,*.rar,*.docx,*.doc,*.xlsx,*.xls,*.pdf</p>
+</div>
+
+            
+         </div>  
+                
+                    </div>
+
+                    <div class="right">
+                        <a href="javascript:void(0);" onclick="closeMessageAttacher();" title="Cancel attachment" tabindex="-1">
+                            <span title="Cancel" class="control-btn ui-icon ui-icon-closethick">Cancel</span>
+                        </a>
+                    </div>
+                    <div class="clear-both"></div>
+                </div>
+                
+                
+                
+                <div id="attachment-link" class="attachment-item">
+                <div class="right">
+                        <a href="javascript:void(0);" onclick="closeMessageAttacher();" title="Cancel attachment" tabindex="-1">
+                            <span title="Cancel" class="control-btn ui-icon ui-icon-closethick">Cancel</span>
+                        </a>
+                </div>
+                <div class="left">
+                    <table class="hidden hidden-element">
+                        <tbody><tr>
+                            <td class="url-thumbnail-container">
+                                <div class="thumbnail" style="height: 50px; width: 50px;"></div>
+                                <div>
+                                    <a href="javascript:void(0);" onclick="prevLinkImg();" tabindex="-1">&lt;</a>
+                                    <a href="javascript:void(0);" onclick="nextLinkImg();" tabindex="-1">&gt;</a>
+                                    <span class="thumbnails-count">0</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div><strong class="title"></strong></div>
+                                <div><p class="body"></p></div>
+                            </td>
+                        </tr>
+                    </tbody></table>
+                </div>
+                <div class="clear-both"></div>
+                <input name="link_url" class="attachment-val" value="" type="hidden">
+                <input name="link_title" class="attachment-val" value="" type="hidden">
+                <input name="link_body" class="attachment-val" value="" type="hidden">
+                <input name="link_thumbnail" class="attachment-val" value="" type="hidden">
+                </div>
+                
+    <div id="pic-thumb-template" style="display: inline-block; height: 50px; overflow: hidden;" class="template pic-thumb-container">
+        
+        <span class="control-btn rm-pic-thumb-ctl ui-icon ui-icon-closethick ui-state-hover hidden" style="position: absolute; margin-left: 32px;" title="Cancel upload image" onclick="cancelUploadPic(this);">Cancel upload image</span>
+        
+        <img class="pic-thumb-img" src="">
+        
+    </div>
+    
+
+                
+            </div>
+        
+        
+        <p style="text-align: right;">
+            <button style="display: none;" id="cancel-write-post" tabindex="-1">Cancel</button>
+            <input value="Write" class="lockable" tabindex="2" type="submit">
+        </p>
+    </form>
+                    
+                </td>
+            </tr>
+        </tbody></table>
+    </div>
+</div>
+
+
+
+
+    
+            <div>
+                
+                <br>
+                
+                <div id="user-post-streams"><!-- user-post-streams -->
+
+    
+
+
+<div style="padding-bottom: 5px;">
+<span style="display: inline-block;">All</span>
+
+<div style="display: inline-block;">
+    <form id="quick-search-form" action="/userpost/search" method="POST">
+        <input name="type" value="All" type="hidden">
+        <input name="origin_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <input name="q" value="Search" class="text-desc-mask" type="text">
+    </form>
+</div>
+
+
+
+<div style="display: inline-block; float: right;">
+    <select id="filter-by" name="filter-by" onchange="filterBy();" style="width: 300px ! important;">
+        
+        <option selected="selected" value="0">Filter by: All</option>
+        <option value="by-origin">
+                Post by robin
+        </option>
+        <option value="from-profile">Post from profile page only</option>
+        
+        <option value="from-channel">From channel</option>
+        <option value="asks">Ask</option>
+        <option value="minds">Mind</option>
+        <option value="posts">Article</option>
+        
+    </select>
+</div>
+<div style="clear: both;"></div>
+</div>
+
+
+<div id="stream-post-line"></div>
+
+
+
+
+
+    
+
+    
+<div id="post-4d0397f399d5ed83e0000000" class="stream-post ui-corner-all poster-4d002ee4b392ef23be000006 status" rel="status,/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status,4d002ee4b392ef23be000006,Yully">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d0397f399d5ed83e0000000" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d0397f399d5ed83e0000000-4d002ee4b392ef23be000006" rel="4d002ee4b392ef23be000006">
+                <a href="http://127.0.0.1:2194/user/Yully">
+                    <img src="robin_files/ce4e5608fd136f9120d234c0e9d716e0.jpg">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d0397f399d5ed83e0000000" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/Yully">Yully</a>
+                    </strong>
+                        to <a href="http://127.0.0.1:2194/user/robin"><strong>robin</strong></a> :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status" title="Show all">1 day ago</a>
+                    
+
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d0397f399d5ed83e0000000'); return false;" id="ptbox-4d0397f399d5ed83e0000000-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d0397f399d5ed83e0000000-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status">Show all</a></li>
+                                <li><a href="javascript:void(0);" onclick="blockUserFromPost('4d002ee4b392ef23be000006','4d0397f399d5ed83e0000000');">Silent</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status&amp;t=status&amp;id=4d0397f399d5ed83e0000000" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status&amp;t=status&amp;id=4d0397f399d5ed83e0000000" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <table class="fit">
+                                <tbody><tr>
+                                    <td style="width: 40px;">
+            <div>
+                <a href="http://127.0.0.1:2194/user/Yully" title="Yully's photo">
+                    <img src="robin_files/ce4e5608fd136f9120d234c0e9d716e0.jpg">
+                </a>
+            </div>
+                                    </td>
+                                    <td class="quote ui-corner-all">
+                                        <p class="post-text compiled">UPDATE: Link share enhancement</p>
+                                    </td>
+                                    <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+                                        
+                                    </td>
+                                </tr>
+                            </tbody></table>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d0397f399d5ed83e0000000" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d0397f399d5ed83e0000000" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d0397f399d5ed83e0000000','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d0397f399d5ed83e0000000" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+    
+
+
+<div id="comment-4d03b75c99d5ed877f000000" class="comment-box alt">
+    <table class="fit valign-top">
+    <tbody><tr>
+        <td style="width: 40px;">
+            
+            <div id="user-quick-info-4d03b75c99d5ed877f000000" class="user-quick-info">
+            </div>
+            
+            <div class="avatar-box" id="avatar-box-4d03b75c99d5ed877f000000-4c5fb49db392ef0717000002" rel="4c5fb49db392ef0717000002">
+            <a href="http://127.0.0.1:2194/user/Danny">
+                <img src="robin_files/27ba0e07d629d33faaacf4a65384e18c.jpg">
+            </a>
+            </div>
+        </td>
+        <td>
+            <div class="message-info" style="padding: 0px ! important; margin: 0px ! important;">
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/Danny">Danny</a>
+                    </strong>
+                    :
+                </div>
+                <div class="right">
+                    <span class="small">
+                    1 day ago
+        
+        
+                    <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status#comment-4d03b75c99d5ed877f000000">#</a>
+                    </span>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="clear-both"></div>
+            <div class="user-post">
+                
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            <p class="post-text compiled">
+                                    Mantap
+                            </p>
+                        </td>
+                        <td style="width: 32px;">
+                            
+                            
+                        </td>
+                    </tr>
+                </tbody></table>
+                
+                
+                
+            </div>
+            
+            <div>
+            <div id="like-comment-4d03b75c99d5ed877f000000" class="likes-box small-grey-text">
+                
+                
+                
+
+
+
+
+                
+            </div>
+        
+            <div class="like-unlike-comment-box hidden inline-block">
+            
+                    <a href="javascript:void(0);" title="Like this" onclick="likeComment('4d03b75c99d5ed877f000000');">
+                        Like
+                    </a>
+                    
+                
+            </div>
+            
+            <div class="clear-both"></div>
+            </div>
+
+        </td>
+    </tr>
+    </tbody></table>
+</div>
+
+    
+    
+ 
+
+    
+
+
+<div id="comment-4d03b79399d5ed877f000002" class="comment-box">
+    <table class="fit valign-top">
+    <tbody><tr>
+        <td style="width: 40px;">
+            
+            <div id="user-quick-info-4d03b79399d5ed877f000002" class="user-quick-info">
+            </div>
+            
+            <div class="avatar-box" id="avatar-box-4d03b79399d5ed877f000002-4c5f984ab392ef0943000000" rel="4c5f984ab392ef0943000000">
+            <a href="http://127.0.0.1:2194/user/robin">
+                <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+            </a>
+            </div>
+        </td>
+        <td>
+            <div class="message-info" style="padding: 0px ! important; margin: 0px ! important;">
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/robin">robin</a>
+                    </strong>
+                    :
+                </div>
+                <div class="right">
+                    <span class="small">
+                    1 day ago
+        
+        
+                    <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d0397f399d5ed83e0000000&amp;pt=status#comment-4d03b79399d5ed877f000002">#</a>
+                    </span>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="clear-both"></div>
+            <div class="user-post">
+                
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            <p class="post-text compiled">
+                                    test man
+                            </p>
+                        </td>
+                        <td style="width: 32px;">
+                            
+                    <span title="Hapus komentar" id="delete-cm-4d03b79399d5ed877f000002" class="control-btn control-btn-cm-delete ui-icon ui-icon-closethick ui-state-disabled hidden" style="position: absolute; margin-left: 12px;">Delete</span>
+                            
+                        </td>
+                    </tr>
+                </tbody></table>
+                
+                
+                
+            </div>
+            
+            <div>
+            <div id="like-comment-4d03b79399d5ed877f000002" class="likes-box small-grey-text">
+                
+                
+                
+
+
+
+
+                
+            </div>
+        
+            <div class="like-unlike-comment-box hidden inline-block">
+            
+                    <a href="javascript:void(0);" title="Like this" onclick="likeComment('4d03b79399d5ed877f000002');">
+                        Like
+                    </a>
+                    
+                
+            </div>
+            
+            <div class="clear-both"></div>
+            </div>
+
+        </td>
+    </tr>
+    </tbody></table>
+</div>
+
+    
+    
+ 
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d0397f399d5ed83e0000000');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d0397f399d5ed83e0000000" class="hidden" onclick="cancelWriteComment('4d0397f399d5ed83e0000000');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/user/robin/show-post?id=4d0397f399d5ed83e0000000&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d0397f399d5ed83e0000000" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d0397f399d5ed83e0000000" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d0397f399d5ed83e0000000" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+    
+
+    
+<div id="post-4d03399b99d5ed67c8000001" class="stream-post ui-corner-all poster-4c5f984ab392ef0943000000 status" rel="status,/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&amp;pt=status,4c5f984ab392ef0943000000,robin">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d03399b99d5ed67c8000001" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d03399b99d5ed67c8000001-4c5f984ab392ef0943000000" rel="4c5f984ab392ef0943000000">
+                <a href="http://127.0.0.1:2194/user/robin">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d03399b99d5ed67c8000001" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/robin">robin</a>
+                    </strong>
+                        said :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&amp;pt=status" title="Show all">1 day ago</a>
+                    
+
+                        from <a href="http://127.0.0.1:2194/ch/brainstorming">#brainstorming</a>
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d03399b99d5ed67c8000001'); return false;" id="ptbox-4d03399b99d5ed67c8000001-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d03399b99d5ed67c8000001-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&amp;pt=status">Show all</a></li>
+                                <!-- TEMPORARY REMOVED <li><a href="">Close</a></li> -->
+                                <li><a href="javascript:void(0);" onclick="removePost('4d03399b99d5ed67c8000001','status');">Delete</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&amp;pt=status&amp;t=status&amp;id=4d03399b99d5ed67c8000001" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&amp;pt=status&amp;t=status&amp;id=4d03399b99d5ed67c8000001" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <p class="post-text compiled">
+                            
+                                ;jk;qjk;qjk;qjk
+                            
+                            </p>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                    <!--span id="delete-post-4d03399b99d5ed67c8000001:status"
+                          class="control-btn control-btn-delete ui-icon ui-icon-closethick ui-state-disabled hidden"
+                          style="position: relative; float: right;">Delete</span-->
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d03399b99d5ed67c8000001" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d03399b99d5ed67c8000001" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d03399b99d5ed67c8000001','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d03399b99d5ed67c8000001" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d03399b99d5ed67c8000001');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d03399b99d5ed67c8000001" class="hidden" onclick="cancelWriteComment('4d03399b99d5ed67c8000001');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/ch/brainstorming/show-post?id=4d03399b99d5ed67c8000001&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d03399b99d5ed67c8000001" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d03399b99d5ed67c8000001" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d03399b99d5ed67c8000001" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+    
+
+    
+<div id="post-4d03398a99d5ed67c8000000" class="stream-post ui-corner-all poster-4c5f984ab392ef0943000000 status" rel="status,/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status,4c5f984ab392ef0943000000,robin">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d03398a99d5ed67c8000000" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d03398a99d5ed67c8000000-4c5f984ab392ef0943000000" rel="4c5f984ab392ef0943000000">
+                <a href="http://127.0.0.1:2194/user/robin">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d03398a99d5ed67c8000000" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/robin">robin</a>
+                    </strong>
+                        said :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status" title="Show all">1 day ago</a>
+                    
+
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d03398a99d5ed67c8000000'); return false;" id="ptbox-4d03398a99d5ed67c8000000-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d03398a99d5ed67c8000000-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status">Show all</a></li>
+                                <!-- TEMPORARY REMOVED <li><a href="">Close</a></li> -->
+                                <li><a href="javascript:void(0);" onclick="removePost('4d03398a99d5ed67c8000000','status');">Delete</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status&amp;t=status&amp;id=4d03398a99d5ed67c8000000" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/user/robin/show-post?id=4d03398a99d5ed67c8000000&amp;pt=status&amp;t=status&amp;id=4d03398a99d5ed67c8000000" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <p class="post-text compiled">
+                            
+                                aoeuaoeuaoeuaoeu
+                            
+                            </p>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                    <!--span id="delete-post-4d03398a99d5ed67c8000000:status"
+                          class="control-btn control-btn-delete ui-icon ui-icon-closethick ui-state-disabled hidden"
+                          style="position: relative; float: right;">Delete</span-->
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d03398a99d5ed67c8000000" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d03398a99d5ed67c8000000" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d03398a99d5ed67c8000000','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d03398a99d5ed67c8000000" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d03398a99d5ed67c8000000');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d03398a99d5ed67c8000000" class="hidden" onclick="cancelWriteComment('4d03398a99d5ed67c8000000');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/user/robin/show-post?id=4d03398a99d5ed67c8000000&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d03398a99d5ed67c8000000" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d03398a99d5ed67c8000000" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d03398a99d5ed67c8000000" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+    
+
+    
+<div id="post-4d03333499d5ed6573000000" class="stream-post ui-corner-all poster-4c5f984ab392ef0943000000 status" rel="status,/user/robin/show-post?id=4d03333499d5ed6573000000&amp;pt=status,4c5f984ab392ef0943000000,robin">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d03333499d5ed6573000000" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d03333499d5ed6573000000-4c5f984ab392ef0943000000" rel="4c5f984ab392ef0943000000">
+                <a href="http://127.0.0.1:2194/user/robin">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d03333499d5ed6573000000" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/robin">robin</a>
+                    </strong>
+                        said :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/user/robin/show-post?id=4d03333499d5ed6573000000&amp;pt=status" title="Show all">1 day ago</a>
+                    
+
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d03333499d5ed6573000000'); return false;" id="ptbox-4d03333499d5ed6573000000-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d03333499d5ed6573000000-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/user/robin/show-post?id=4d03333499d5ed6573000000&amp;pt=status">Show all</a></li>
+                                <!-- TEMPORARY REMOVED <li><a href="">Close</a></li> -->
+                                <li><a href="javascript:void(0);" onclick="removePost('4d03333499d5ed6573000000','status');">Delete</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/user/robin/show-post?id=4d03333499d5ed6573000000&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/user/robin/show-post?id=4d03333499d5ed6573000000&amp;pt=status&amp;t=status&amp;id=4d03333499d5ed6573000000" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/user/robin/show-post?id=4d03333499d5ed6573000000&amp;pt=status&amp;t=status&amp;id=4d03333499d5ed6573000000" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <p class="post-text compiled">
+                            
+                                Testing
+                            
+                            </p>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                    <!--span id="delete-post-4d03333499d5ed6573000000:status"
+                          class="control-btn control-btn-delete ui-icon ui-icon-closethick ui-state-disabled hidden"
+                          style="position: relative; float: right;">Delete</span-->
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d03333499d5ed6573000000" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d03333499d5ed6573000000" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d03333499d5ed6573000000','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d03333499d5ed6573000000" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d03333499d5ed6573000000');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d03333499d5ed6573000000" class="hidden" onclick="cancelWriteComment('4d03333499d5ed6573000000');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/user/robin/show-post?id=4d03333499d5ed6573000000&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d03333499d5ed6573000000" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d03333499d5ed6573000000" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d03333499d5ed6573000000" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+    
+
+    
+<div id="post-4d01e546b392ef44bb000012" class="stream-post ui-corner-all poster-4cf7c327b392ef1e91000001 status" rel="status,/user/exavolt/show-post?id=4d01e546b392ef44bb000012&amp;pt=status,4cf7c327b392ef1e91000001,exavolt">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d01e546b392ef44bb000012" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d01e546b392ef44bb000012-4cf7c327b392ef1e91000001" rel="4cf7c327b392ef1e91000001">
+                <a href="http://127.0.0.1:2194/user/exavolt">
+                    <img src="robin_files/00724b9656aa47f2afdaff7c93a316d8.png">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d01e546b392ef44bb000012" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/exavolt">exavolt</a>
+                    </strong>
+                        said :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/user/exavolt/show-post?id=4d01e546b392ef44bb000012&amp;pt=status" title="Show all">3  days ago</a>
+                    
+
+                        from <a href="http://127.0.0.1:2194/user/exavolt">exavolt's Home</a>
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d01e546b392ef44bb000012'); return false;" id="ptbox-4d01e546b392ef44bb000012-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d01e546b392ef44bb000012-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/user/exavolt/show-post?id=4d01e546b392ef44bb000012&amp;pt=status">Show all</a></li>
+                                <li><a href="javascript:void(0);" onclick="blockUserFromPost('4cf7c327b392ef1e91000001','4d01e546b392ef44bb000012');">Silent</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/user/exavolt/show-post?id=4d01e546b392ef44bb000012&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/user/exavolt/show-post?id=4d01e546b392ef44bb000012&amp;pt=status&amp;t=status&amp;id=4d01e546b392ef44bb000012" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/user/exavolt/show-post?id=4d01e546b392ef44bb000012&amp;pt=status&amp;t=status&amp;id=4d01e546b392ef44bb000012" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <p class="post-text compiled">
+                            
+                                Man!!! Chrome nggak bisa scroll up. SUX!!!!
+                            
+                            </p>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d01e546b392ef44bb000012" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d01e546b392ef44bb000012" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d01e546b392ef44bb000012','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d01e546b392ef44bb000012" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d01e546b392ef44bb000012');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d01e546b392ef44bb000012" class="hidden" onclick="cancelWriteComment('4d01e546b392ef44bb000012');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/user/exavolt/show-post?id=4d01e546b392ef44bb000012&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d01e546b392ef44bb000012" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d01e546b392ef44bb000012" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d01e546b392ef44bb000012" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+    
+
+    
+<div id="post-4d01dd81b392ef44b900000d" class="stream-post ui-corner-all poster-4c5fa8e9b392ef054e000005 status" rel="status,/ch/developer/show-post?id=4d01dd81b392ef44b900000d&amp;pt=status,4c5fa8e9b392ef054e000005,sheriefmursjidi">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d01dd81b392ef44b900000d" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d01dd81b392ef44b900000d-4c5fa8e9b392ef054e000005" rel="4c5fa8e9b392ef054e000005">
+                <a href="http://127.0.0.1:2194/user/sheriefmursjidi">
+                    <img src="robin_files/no_avatar_50x50.png">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d01dd81b392ef44b900000d" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/sheriefmursjidi">sheriefmursjidi</a>
+                    </strong>
+                        said :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/ch/developer/show-post?id=4d01dd81b392ef44b900000d&amp;pt=status" title="Show all">3  days ago</a>
+                    
+
+                        from <a href="http://127.0.0.1:2194/ch/developer">#developer</a>
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d01dd81b392ef44b900000d'); return false;" id="ptbox-4d01dd81b392ef44b900000d-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d01dd81b392ef44b900000d-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/ch/developer/show-post?id=4d01dd81b392ef44b900000d&amp;pt=status">Show all</a></li>
+                                <li><a href="javascript:void(0);" onclick="blockUserFromPost('4c5fa8e9b392ef054e000005','4d01dd81b392ef44b900000d');">Silent</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/ch/developer/show-post?id=4d01dd81b392ef44b900000d&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/ch/developer/show-post?id=4d01dd81b392ef44b900000d&amp;pt=status&amp;t=status&amp;id=4d01dd81b392ef44b900000d" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/ch/developer/show-post?id=4d01dd81b392ef44b900000d&amp;pt=status&amp;t=status&amp;id=4d01dd81b392ef44b900000d" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <p class="post-text compiled">
+                            
+                                di IE7, autocomplete-nya gak jalan, kemungkinan karena menggunakan javascript yang sama
+                            
+                            </p>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d01dd81b392ef44b900000d" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d01dd81b392ef44b900000d" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d01dd81b392ef44b900000d','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d01dd81b392ef44b900000d" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d01dd81b392ef44b900000d');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d01dd81b392ef44b900000d" class="hidden" onclick="cancelWriteComment('4d01dd81b392ef44b900000d');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/ch/developer/show-post?id=4d01dd81b392ef44b900000d&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d01dd81b392ef44b900000d" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d01dd81b392ef44b900000d" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d01dd81b392ef44b900000d" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+    
+
+    
+<div id="post-4d01d81fb392ef44b900000b" class="stream-post ui-corner-all poster-4c5fa8e9b392ef054e000005 status" rel="status,/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status,4c5fa8e9b392ef054e000005,sheriefmursjidi">
+    <div class="body">
+        <table class="fit">
+            <tbody><tr>
+                
+                <td class="left-box">
+                    
+        
+        <div class="left-box">
+            
+            <div id="user-quick-info-4d01d81fb392ef44b900000b" class="user-quick-info">
+            </div>
+
+            <div class="avatar-box" id="avatar-box-4d01d81fb392ef44b900000b-4c5fa8e9b392ef054e000005" rel="4c5fa8e9b392ef054e000005">
+                <a href="http://127.0.0.1:2194/user/sheriefmursjidi">
+                    <img src="robin_files/no_avatar_50x50.png">
+                </a>
+            </div>
+
+            <div id="post-symbols-4d01d81fb392ef44b900000b" class="post-symbols">
+            </div>
+            
+            
+        </div>
+        
+                    
+                </td>
+                
+                
+                <td>
+                    
+        <div class="message-container">
+            <div class="message-info header status ui-corner-all">
+                
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/sheriefmursjidi">sheriefmursjidi</a>
+                    </strong>
+                        said :
+                </div>
+                
+                <div class="right">
+                    <div class="small">
+                    
+                    <a href="http://127.0.0.1:2194/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status" title="Show all">3  days ago</a>
+                    
+
+                        from <a href="http://127.0.0.1:2194/ch/photography">#photography</a>
+                    
+                        •
+                    <a href="" onclick="post_toolbox_click_handler('4d01d81fb392ef44b900000b'); return false;" id="ptbox-4d01d81fb392ef44b900000b-ctl" class="ptbox-ctl">»</a>
+                        <div style="position: relative;">
+                        <div id="ptbox-4d01d81fb392ef44b900000b-box" class="ptbox-box" style="display: none;">
+                            <ul>
+                                <!-- TEMPORARY REMOVED <li><a href="">Mirror</a></li> -->
+                                <li><a href="http://127.0.0.1:2194/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status">Show all</a></li>
+                                <li><a href="javascript:void(0);" onclick="blockUserFromPost('4c5fa8e9b392ef054e000005','4d01d81fb392ef44b900000b');">Silent</a></li>
+                                <li><em>Share:</em>
+                                    <ul class="horizontal-menu">
+                                        <li>
+                                            <a href="http://www.facebook.com/share.php?src=bm&amp;u=/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status&amp;t=&amp;v=3" target="_blank" title="Click to share on Facebook"><img src="robin_files/facebook-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/twitter?url=/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status&amp;t=status&amp;id=4d01d81fb392ef44b900000b" target="_blank" title="Click to share on twitter"><img src="robin_files/twitter-32x.png"></a>
+                                        </li>
+                                        <li>
+                                            <a href="http://127.0.0.1:2194/shareto/digg?url=/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status&amp;t=status&amp;id=4d01d81fb392ef44b900000b" target="_blank" title="Click to share on digg"><img src="robin_files/digg-32x.png"></a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="message-content user-post compiled">
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            
+                        
+                            <p class="post-text compiled">
+                            
+                                @<a href="http://127.0.0.1:2194/user/robin">robin</a> cekidot <a href="http://photosynth.net/view.aspx?cid=cce2f0ce-3d15-49fe-94bd-4d09511edae7" title="http://photosynth.net/view.aspx?cid=cce2f0ce-3d15-49fe-94bd-4d09511edae7" target="_blank">photosynth.net/view.aspx...</a>
+                            
+                            </p>
+
+                            
+                        </td>
+                        <td style="width: 32px;">
+                            
+                            
+                        </td>
+                    </tr>
+                    
+                    
+                </tbody></table>
+
+            </div>
+            
+<div>
+    
+    <div id="likes-4d01d81fb392ef44b900000b" class="grey-link small-grey-text likes-box">
+        
+        
+        
+
+
+
+
+
+    </div>
+    
+    <div id="message-control-4d01d81fb392ef44b900000b" class="message-control hidden">
+    
+                <a href="javascript:void(0);" title="Like this" onclick="likeUserPost('4d01d81fb392ef44b900000b','status');">
+                    Like
+                </a>
+                
+                
+    </div>
+    
+</div>
+
+            
+            
+            
+            
+        </div>
+        
+        
+        
+            
+            
+<!-- comment -->
+<div id="post-comments-4d01d81fb392ef44b900000b" class="post-comments">
+
+
+
+    
+    
+
+
+
+
+    
+
+
+<div id="comment-4d01dbc8b392ef44bb000010" class="comment-box alt">
+    <table class="fit valign-top">
+    <tbody><tr>
+        <td style="width: 40px;">
+            
+            <div id="user-quick-info-4d01dbc8b392ef44bb000010" class="user-quick-info">
+            </div>
+            
+            <div class="avatar-box" id="avatar-box-4d01dbc8b392ef44bb000010-4c5fa8e9b392ef054e000005" rel="4c5fa8e9b392ef054e000005">
+            <a href="http://127.0.0.1:2194/user/sheriefmursjidi">
+                <img src="robin_files/no_avatar_50x50.png">
+            </a>
+            </div>
+        </td>
+        <td>
+            <div class="message-info" style="padding: 0px ! important; margin: 0px ! important;">
+                <div class="left">
+                    <strong>
+                        <a href="http://127.0.0.1:2194/user/sheriefmursjidi">sheriefmursjidi</a>
+                    </strong>
+                    :
+                </div>
+                <div class="right">
+                    <span class="small">
+                    3  days ago
+        
+                from <a href="http://127.0.0.1:2194/ch/photography">#photography</a>
+        
+                    <a href="http://127.0.0.1:2194/ch/photography/show-post?id=4d01d81fb392ef44b900000b&amp;pt=status#comment-4d01dbc8b392ef44bb000010">#</a>
+                    </span>
+                </div>
+                <div class="clear-both"></div>
+            </div>
+            <div class="clear-both"></div>
+            <div class="user-post">
+                
+                <table class="fit">
+                    <tbody><tr>
+                        <td>
+                            <p class="post-text compiled binded">
+                                    kudu install silverlight <img style="max-width: 203px; max-height: 203px;" src="robin_files/smile.gif">
+                            </p>
+                        </td>
+                        <td style="width: 32px;">
+                            
+                            
+                        </td>
+                    </tr>
+                </tbody></table>
+                
+                
+                
+            </div>
+            
+            <div>
+            <div id="like-comment-4d01dbc8b392ef44bb000010" class="likes-box small-grey-text">
+                
+                
+                
+
+
+
+
+                
+            </div>
+        
+            <div class="like-unlike-comment-box hidden inline-block">
+            
+                    <a href="javascript:void(0);" title="Like this" onclick="likeComment('4d01dbc8b392ef44bb000010');">
+                        Like
+                    </a>
+                    
+                
+            </div>
+            
+            <div class="clear-both"></div>
+            </div>
+
+        </td>
+    </tr>
+    </tbody></table>
+</div>
+
+    
+    
+ 
+
+</div>
+            
+        
+                <div>
+                    <a href="javascript:void(0);" onclick="writeComment(this,'4d01d81fb392ef44b900000b');">Write comment</a>
+                    <a href="javascript:void(0);" id="cancel-write-comment-4d01d81fb392ef44b900000b" class="hidden" onclick="cancelWriteComment('4d01d81fb392ef44b900000b');">Cancel</a>
+                <!--
+                    <div style="display: inline-block;"></div><a href="/ch/photography/show-post?id=4d01d81fb392ef44b900000b&pt=status">Show all</a>
+                -->
+
+                    <div class="clear-both"></div>
+                
+                </div>
+
+            
+                    
+
+
+
+<div id="comment-writer-4d01d81fb392ef44b900000b" class="comment-writer" style="display: none;">
+    
+    <table class="fit valign-top">
+        <tbody><tr>
+            <td style="width: 40px;">
+                                        
+            <div>
+                <a href="http://127.0.0.1:2194/user/robin" title="robin's photo">
+                    <img src="robin_files/2535d3bc35e2351b80587ddc707b4510.png">
+                </a>
+            </div>
+            
+            </td>
+            
+            <td>
+    <form id="post-comment-4d01d81fb392ef44b900000b" class="dg-form" action="/userpost/write-comment" method="POST">
+        <input name="id" value="4d01d81fb392ef44b900000b" type="hidden">
+        <input name="pt" value="status" type="hidden">
+        <input name="orig_id" value="4c5f984ab392ef0943000000" type="hidden">
+        <textarea style="display: block; overflow: hidden;" name="message" class="lockable expandable mention_input"></textarea>
+        <p style="text-align: right; padding-right: 10px;">
+            <input class="lockable" value="Write" type="submit">
+        </p>
+    </form>
+            </td>
+        </tr>
+    </tbody></table>
+
+</div>
+
+                   
+                   
+                    
+                </td>
+            </tr>
+        </tbody></table>
+
+        <div class="clear-both"></div>
+    </div>
+            
+</div>
+
+    
+    
+
+<div class="grey-link text-right">
+    <a id="more-stream-ctl" href="javascript:void(0);" onclick="morePostStream(7);">More...(769)</a>
+</div></div>
+                
+            </div>
+            
+            
+        </div>
+        <div class="left user-right-panel">
+			
+            <div class="dg-box ui-corner-all">
+                <div class="title">Personal information</div>
+                <div class="body">
+                <span title="Edit" onclick="window.location='#/edit-profile';" class="control-btn control-btn-edit ui-icon ui-icon-pencil ui-state-disabled ui-button-text-icon right">Edit</span>
+                    <table class="dg-desc valign-top">
+                        <tbody><tr>
+                            <td style="width: 90px;">Sex:</td><td>Male</td>
+                        </tr>
+                        <tr>
+                            <td>Level:</td><td>1</td>
+                        </tr>
+                        <tr>
+                            <td>Point:</td><td>2</td>
+                        </tr>
+                        <tr>
+                            <td>Join date:</td><td>09 Aug 2010 (4  months ago)</td>
+                        </tr>
+                        <tr>
+                            <td>
+                                is a:
+                            </td>
+                            <td>
+                                <div>
+                                    
+									<ul id="personal-desc-list" class="no-style personal-desc-list">
+                                        <li id="pdesc-item-4c6f0ff6b392ef4a0e000001" class="pdesc-item">
+                                            <a href="http://127.0.0.1:2194/sys/usersearch/search?pdesc=Programmer">Programmer</a>
+                                            <div style="width: 10px; display: inline-block;"><a href="javascript:void(0);" title="Delete" class="pdesc-remover-ctl hidden">x</a></div>
+                                        </li>
+                                        <li id="pdesc-item-4c6f1015b392ef4a0e000002" class="pdesc-item">
+                                            <a href="http://127.0.0.1:2194/sys/usersearch/search?pdesc=Thinker">Thinker</a>
+                                            <div style="width: 10px; display: inline-block;"><a href="javascript:void(0);" title="Delete" class="pdesc-remover-ctl hidden">x</a></div>
+                                        </li>
+                                        <li id="pdesc-item-4cc72f65b392ef6cb8000000" class="pdesc-item">
+                                            <a href="http://127.0.0.1:2194/sys/usersearch/search?pdesc=Dvoraker">Dvoraker</a>
+                                            <div style="width: 10px; display: inline-block;"><a href="javascript:void(0);" title="Delete" class="pdesc-remover-ctl hidden">x</a></div>
+                                        </li>
+                                    </ul>
+									
+                                    <input class="ac_input" autocomplete="off" id="input-personal-desc" style="width: 100px ! important;" type="text">
+                                    
+                                    
+                                    
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody></table>
+                </div>
+            </div>
+			
+			<br>
+			
+			
+            <div role="tablist" class="ui-accordion ui-widget ui-helper-reset ui-accordion-icons" id="user-pannel-acc">
+                <h3 tabindex="0" aria-expanded="false" role="tab" class="ui-accordion-header ui-helper-reset ui-state-default ui-corner-all"><span class="ui-icon ui-icon-triangle-1-e"></span><a tabindex="-1" href="#">Founder of channel</a></h3>
+                <div style="display: none;" role="tabpanel" class="ui-accordion-content ui-helper-reset ui-widget-content ui-corner-bottom">
+                    <ul class="no-style">
+                        <li><a href="http://127.0.0.1:2194/ch/Digaku-Dev">#Digaku-Dev</a></li>
+                    </ul>
+                </div>
+
+			<h3 tabindex="-1" aria-expanded="false" role="tab" class="ui-accordion-header ui-helper-reset ui-state-default ui-corner-all"><span class="ui-icon ui-icon-triangle-1-e"></span><a tabindex="-1" href="#">Badges collections</a></h3>
+			<div style="display: none;" role="tabpanel" class="ui-accordion-content ui-helper-reset ui-widget-content ui-corner-bottom">
+					<div style="margin-top: 10px;">
+					<center>Empty</center>
+					</div>
+			</div>
+			
+			
+            <h3 tabindex="-1" aria-expanded="false" role="tab" class="ui-accordion-header ui-helper-reset ui-state-default ui-corner-all"><span class="ui-icon ui-icon-triangle-1-e"></span><a tabindex="-1" href="#">Hot channels</a></h3>
+			<div style="display: none;" role="tabpanel" id="hot-channel-list" class="channel-list ui-accordion-content ui-helper-reset ui-widget-content ui-corner-bottom">
+                <ul class="no-style">
+                    <li><a href="http://127.0.0.1:2194/ch/Fun-and-Joke">#Fun-and-Joke</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/hq">#hq</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/black.hole">#black.hole</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/developer">#developer</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/brainstorming">#brainstorming</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/klixdigital">#klixdigital</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/photography">#photography</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/semutapi">#semutapi</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/news">#news</a></li>
+                    <li><a href="http://127.0.0.1:2194/ch/merapi">#merapi</a></li>
+                </ul>
+            </div>
+
+			<h3 tabindex="-1" aria-expanded="false" role="tab" class="ui-accordion-header ui-helper-reset ui-state-default ui-corner-all"><span class="ui-icon ui-icon-triangle-1-e"></span><a tabindex="-1" href="#">Top articles (Global)</a></h3>
+			<div style="display: none;" role="tabpanel" class="top-post ui-accordion-content ui-helper-reset ui-widget-content ui-corner-bottom">
+				
+				<ul>
+				
+				
+				<li style="border-top: 0px none ! important;">
+				<div>
+					<div><a href="http://127.0.0.1:2194/post/4ce34938b392ef64ec00000c/update-penambahan-fitur-support-attachment.html"><strong>
+					Update : Penambahan fitur Support Attachment dan Upload (Photo, Video, File)
+					</strong></a></div>
+					<div class="small-note" style="padding-left: 10px;">
+						
+						2 comments
+						
+							|
+						liked by 7 persons
+							|
+						from channel <a href="http://127.0.0.1:2194/ch/hq">#hq</a>
+					</div>
+				</div>
+				</li>
+				
+				
+				
+				<li>
+				<div>
+					<div><a href="http://127.0.0.1:2194/post/4cdf725eb392ef6e3e000020/anak-yatim.html"><strong>
+					Anak yatim
+					</strong></a></div>
+					<div class="small-note" style="padding-left: 10px;">
+						
+						
+						liked by 2 persons
+							|
+						from channel <a href="http://127.0.0.1:2194/ch/Fun-and-Joke">#Fun-and-Joke</a>
+					</div>
+				</div>
+				</li>
+				
+				
+				
+				<li>
+				<div>
+					<div><a href="http://127.0.0.1:2194/post/4ce67681b392ef704a000037/angklung-resmi-milik-indonesia.html"><strong>
+					ANGKLUNG RESMI MILIK INDONESIA
+					</strong></a></div>
+					<div class="small-note" style="padding-left: 10px;">
+						
+						1 comments
+						
+							|
+						liked by 2 persons
+							|
+						from channel <a href="http://127.0.0.1:2194/ch/news">#news</a>
+					</div>
+				</div>
+				</li>
+				
+				
+				
+				<li>
+				<div>
+					<div><a href="http://127.0.0.1:2194/post/4cf884c1b392ef1e9200000d/youtube-luncurkan-fitur-baru-personalisasi.html"><strong>
+					YouTube Luncurkan Fitur Baru: Personalisasi Untuk YouTube Leanback dan Fasilitas TrueView
+					</strong></a></div>
+					<div class="small-note" style="padding-left: 10px;">
+						
+						
+						liked by 1 persons
+							|
+						from channel <a href="http://127.0.0.1:2194/ch/TWITALK">#TWITALK</a>
+					</div>
+				</div>
+				</li>
+				
+				
+				
+				<li>
+				<div>
+					<div><a href="http://127.0.0.1:2194/post/4ce1b418b392ef6e3c000021/jokes.html"><strong>
+					Jokes
+					</strong></a></div>
+					<div class="small-note" style="padding-left: 10px;">
+						
+						3 comments
+						
+							|
+						liked by 1 persons
+							|
+						from channel <a href="http://127.0.0.1:2194/ch/Fun-and-Joke">#Fun-and-Joke</a>
+					</div>
+				</div>
+				</li>
+				
+				</ul>
+			
+			
+			</div>
+
+				<h3 tabindex="-1" aria-expanded="false" role="tab" class="ui-accordion-header ui-helper-reset ui-state-default ui-corner-all"><span class="ui-icon ui-icon-triangle-1-e"></span><a tabindex="-1" href="#">Statistic</a></h3>
+				<div style="display: none;" role="tabpanel" class="ui-accordion-content ui-helper-reset ui-widget-content ui-corner-bottom">
+					<table class="fit">
+							<tbody><tr>
+								<td>Channel</td><td>:</td>
+								<td>29</td>
+							</tr>
+							<tr>
+								<td>Post</td><td>:</td>
+								<td>31</td>
+							</tr>
+							<tr>
+								<td>Ask</td><td>:</td>
+								<td>3</td>
+							</tr>
+							<tr>
+								<td>Mind</td><td>:</td>
+								<td>230</td>
+							</tr>
+							<tr>
+								<td>Post Total</td><td>:</td>
+								<td>395</td>
+							</tr>
+						</tbody></table>
+				</div>
+            </div>            
+            
+            <br>
+            <div class="dg-box ui-corner-all">
+                <div id="follower-list">
+                    
+<div class="title">Supporters</div>
+<div class="body">
+    
+    
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/labanux"><img src="robin_files/440aa8e4034ca8e0c84bfe3653c61e6e.gif" title="labanux"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/Danny"><img src="robin_files/27ba0e07d629d33faaacf4a65384e18c.jpg" title="Danny"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/ngocok"><img src="robin_files/8ad18ba1db897d01900f491fcc17ceaa.jpg" title="ngocok"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/fako"><img src="robin_files/19201b61767b138ba0a83fe71d21e7a3.png" title="fako"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/herman"><img src="robin_files/f25c8858330a7720ac411868e367d07b.jpg" title="herman"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/istanakomedi"><img src="robin_files/fa0bf76e5ed7e95930ae1769011e1a06.jpg" title="istanakomedi"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/sulton"><img src="robin_files/6a17a3c4cbe66341d85c8db602f4f854.JPG" title="sulton"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/akhsan99"><img src="robin_files/4ec158791f7ca4a5768a22dcbb9bafcd.jpg" title="akhsan99"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/KocakBoy"><img src="robin_files/79d99f188ced1d366349c2816bff6f31.gif" title="KocakBoy"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/ansaver"><img src="robin_files/aa86acf5e66066e163eae8a66260df4e.jpg" title="ansaver"></a>
+        </div>
+
+    <div class="text-center" style="border-top: 1px solid rgb(94, 175, 222); margin-top: 5px;">
+        <a class="dg-ajax-box" href="http://127.0.0.1:2194/sys/userprofile/follower?id=4c5f984ab392ef0943000000" title="robin's supporters">
+        <strong>
+            17
+                person
+        </strong>
+        </a>
+    </div>
+
+    
+</div>
+<div style="text-align: right;">
+
+
+</div>
+
+
+                </div>
+            </div>
+            
+            <br>
+            <div class="dg-box ui-corner-all">
+                <div id="follows-list">
+					<div class="title">Support</div>
+<div class="body">
+    
+    
+    
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/sheriefmursjidi"><img src="robin_files/no_avatar_50x50.png" title="sheriefmursjidi"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/Danny"><img src="robin_files/27ba0e07d629d33faaacf4a65384e18c.jpg" title="Danny"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/ngocok"><img src="robin_files/8ad18ba1db897d01900f491fcc17ceaa.jpg" title="ngocok"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/ifanobi"><img src="robin_files/no_avatar_50x50.png" title="ifanobi"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/fako"><img src="robin_files/19201b61767b138ba0a83fe71d21e7a3.png" title="fako"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/krisnarenaldi"><img src="robin_files/7be93e085dd9f3ffe78294136a9e5f09.jpg" title="krisnarenaldi"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/herman"><img src="robin_files/f25c8858330a7720ac411868e367d07b.jpg" title="herman"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/reneadhibrata"><img src="robin_files/00fb6e4eab0e2ddbd85d655ab50f26b8.jpg" title="reneadhibrata"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/sulton"><img src="robin_files/6a17a3c4cbe66341d85c8db602f4f854.JPG" title="sulton"></a>
+        </div>
+        <div style="display: inline-block; height: 50px; overflow: hidden;">
+            <a href="http://127.0.0.1:2194/user/akhsan99"><img src="robin_files/4ec158791f7ca4a5768a22dcbb9bafcd.jpg" title="akhsan99"></a>
+        </div>
+     
+    
+   <div class="text-center" style="border-top: 1px solid rgb(94, 175, 222); margin-top: 5px;">
+       <a class="dg-ajax-box" href="http://127.0.0.1:2194/sys/userprofile/following?id=4c5f984ab392ef0943000000" title="robin supports">
+       <strong>
+           15
+               person
+       </strong>
+       </a>
+   </div>
+     
+     
+    
+</div>
+
+                </div>
+            </div>
+            
+        </div>
+</div>
+
+
+
+
+</div>
+
+        <div class="clear-both"></div>
+    </div>
+    </center>
+
+</div>
+
+    
+
+
+<div id="mention_suggestion_box" class="ac_results" style="display: none;"></div><div id="regs" class="hidden"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div><div style="position: absolute; top: -999px; left: -999px; border: 1px solid rgb(0, 0, 0); overflow-x: hidden; visibility: hidden; z-index: 0; white-space: pre-wrap; word-wrap: break-word; padding: 5px; font-size: 13px; font-family: monospace; font-weight: 400; font-style: normal; font-stretch: normal; font-variant: normal; word-spacing: 0px; line-height: 14px; width: 97%;"></div></body></html>
